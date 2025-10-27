@@ -239,6 +239,15 @@ Each model has its own root directory containing 8 subdirectories for each test 
 - [Llama 3.1 Model Card](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct)
 - [Qwen 2.5 Coder](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct)
 - [Ministral Documentation](https://huggingface.co/mistralai/Ministral-8B-Instruct-2410)
+- References Terraform code
+    - [Ref 1_version](https://developer.hashicorp.com/terraform/language/backend/local)
+    - [Ref 2_vpc](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc)
+    - [Ref 3_vpc_sub_rt](https://cloudnativeengineer.substack.com/p/enhancing-software-design-with-diagrams)
+    - [Ref 4_vpc_ec2](https://github.com/ldpacl/AWS/tree/main/aws_vpc/VPC_sample)
+    - [Ref 5_dynamo_s3](https://aws.plainenglish.io/creating-a-terraform-module-for-s3-remote-backend-with-dynamodb-state-locking-17f1df067a8d)
+    - [Ref 6_ec2_efs](https://dev.to/chinmay13/getting-started-with-aws-and-terraform-multi-attaching-elastic-file-system-efs-volumes-to-ec2-instances-using-terraform-3289)
+    - [Ref 7_two_tier](https://www.devopshint.com/two-tier-architecture-in-aws-using-terraform)
+    - [Ref 8_three_tier](https://github.com/mathesh-me/multi-tier-architecture-using-terraform/tree/main)
 
 
 ## 🙏 Acknowledgments
