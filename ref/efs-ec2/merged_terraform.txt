@@ -1,0 +1,231 @@
+### FILE: aws_efs_volume.tf ###############################################
+resource "aws_efs_file_system" "efs" {
+  creation_token   = "efs"
+  performance_mode = "generalPurpose"
+  throughput_mode  = "bursting"
+  encrypted        = "true"
+  tags = {
+    Name = "EFS"
+  }
+}
+
+resource "aws_efs_mount_target" "efs-mt" {
+  count           = length(data.aws_availability_zones.available.names)
+  file_system_id  = aws_efs_file_system.efs.id
+  subnet_id       = aws_subnet.subnet[count.index].id
+  security_groups = [aws_security_group.efs.id]
+}
+
+# Creating Mount Point for EFS
+resource "null_resource" "configure_nfs" {
+  depends_on = [aws_efs_mount_target.efs-mt]
+  connection {
+    type        = "ssh"
+    user        = "ec2-user"
+    private_key = file(var.private_key)
+    host        = aws_instance.testinstance.public_ip
+    timeout     = "20s"
+  }
+
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo yum install httpd -y -q",
+      "sleep 15",
+      "sudo yum install php  -y -q ",
+      "sleep 5",
+      "sudo systemctl start httpd",
+      "sleep 5",
+      "sudo systemctl enable httpd",
+      "sleep 5",
+      "sudo yum install nfs-utils -y -q ", # Amazon ami has pre installed nfs utils
+      "sleep 15",
+      "sudo service rpcbind restart",
+      "sleep 15",
+      # Mounting Efs 
+      "sudo mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport ${aws_efs_file_system.efs.dns_name}:/  /var/www/html",
+      "sleep 15",
+      "sudo chmod go+rw /var/www/html",
+      "sudo bash -c 'echo Welcome  > /var/www/html/index.html'",
+    ]
+  }
+}
+
+
+### FILE: aws_instance.tf ###############################################
+resource "aws_instance" "testinstance" {
+  ami                         = var.ami_id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.subnet[0].id
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.ec2.id]
+  key_name                    = var.key_name
+  #   user_data = filebase64(var.user_data_file)
+  # user_data = templatefile("${path.module}/user-data.sh", {
+  #   efs_dns_name = aws_efs_file_system.main.ip_address
+  # })
+  tags = {
+    Name = "testinstance"
+  }
+}
+
+
+
+### FILE: network.tf ###############################################
+data "aws_availability_zones" "available" {}
+
+resource "aws_vpc" "vpc" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+  tags = {
+    Name = "test-env"
+  }
+}
+
+resource "aws_internet_gateway" "internet_gateway" {
+  vpc_id = aws_vpc.vpc.id
+  tags = {
+    Name = "Internet_Gateway"
+  }
+}
+
+resource "aws_subnet" "subnet" {
+  count             = length(data.aws_availability_zones.available.names)
+  cidr_block        = cidrsubnet(aws_vpc.vpc.cidr_block, 8, count.index)
+  vpc_id            = aws_vpc.vpc.id
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+}
+
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.vpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.internet_gateway.id
+  }
+
+  tags = {
+    Name = "Public Route Table"
+  }
+  depends_on = [aws_internet_gateway.internet_gateway]
+}
+
+resource "aws_route_table_association" "vpc_public_assoc" {
+  count          = length(data.aws_availability_zones.available.names)
+  subnet_id      = aws_subnet.subnet.*.id[count.index]
+  route_table_id = aws_route_table.public.id
+}
+
+
+### FILE: provider.tf ###############################################
+terraform {
+  required_version = ">= 1.0.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
+    }
+  }
+
+  backend "local" {
+    path = "terraform.tfstate"
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+
+
+### FILE: security.tf ###############################################
+resource "aws_security_group" "ec2" {
+  name        = "allow_efs"
+  description = "Allow efs outbound traffic"
+  vpc_id      = aws_vpc.vpc.id
+  ingress {
+    cidr_blocks = ["0.0.0.0/0"]
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = {
+    Name = "allow_efs"
+  }
+}
+
+resource "aws_security_group" "efs" {
+  name        = "efs-sg"
+  description = "Allows inbound efs traffic from ec2"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    security_groups = [aws_security_group.ec2.id]
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+  }
+
+  egress {
+    security_groups = [aws_security_group.ec2.id]
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+  }
+}
+
+
+### FILE: variables.tf ###############################################
+# variable "public_key" {
+#   type        = string
+#   description = "File path of public key."
+#   default     = "~/.ssh/id_rsa.pub"
+# }
+
+variable "private_key" {
+  type        = string
+  description = "File path of private key."
+  default     = "C:/Users/USER/Downloads/ec2-key.pem"
+}
+
+variable "key_name" {
+    type = string
+    description = "Key name"
+    default = "ec2-key"
+  
+}
+
+variable "ami_id" {
+    type = string
+    description = "ami id for ec2 instances"
+    default = "ami-0341d95f75f311023"
+  
+}
+
+variable "instance_type" {
+    type = string
+    description = "ec2 instance type"
+    default = "t2.micro"
+  
+}
+
+variable "vpc_cidr" {
+    type = string
+    default = "10.0.0.0/16"
+  
+}
+
+variable "user_data_file" {
+  type = string
+  default = "user-data.sh"
+}
+
+
