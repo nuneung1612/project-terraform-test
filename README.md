@@ -95,9 +95,7 @@ print("=" * 80)
 response = pipe(
     messages,
     max_new_tokens=4000,
-    do_sample=False
 )
-
 print(response[0]['generated_text'][-1]['content'])
 ```
 
