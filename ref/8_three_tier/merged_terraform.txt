@@ -1,0 +1,760 @@
+### FILE: alb-app-sg.tf ###############################################
+resource "aws_security_group" "alb-security-group-app" {
+  name        = var.alb-sg-app-name
+  description = "ALB Security Group"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    description     = "HTTP from Internet"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.asg-security-group-web.id]
+  }
+
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = var.alb-sg-app-name
+  }
+}
+
+
+### FILE: alb-app.tf ###############################################
+resource "aws_lb" "alb-app" {
+  name               = var.alb-app-name
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb-security-group-app.id]
+  subnets            = [aws_subnet.app-subnet1.id, aws_subnet.app-subnet2.id]
+}
+
+
+### FILE: alb-web-sg.tf ###############################################
+resource "aws_security_group" "alb-security-group-web" {
+  name        = var.alb-sg-web-name
+  description = "ALB Security Group"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    description = "HTTP from Internet"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = var.alb-sg-web-name
+  }
+}
+
+
+### FILE: alb-web.tf ###############################################
+resource "aws_lb" "alb-web" {
+  name               = var.alb-web-name
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb-security-group-web.id]
+  subnets            = [aws_subnet.web-subnet1.id, aws_subnet.web-subnet2.id]
+}
+
+
+### FILE: app-subnets.tf ###############################################
+resource "aws_subnet" "app-subnet1" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.app-subnet1-cidr
+  availability_zone       = var.az-1
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name = var.app-subnet1-name
+  }
+}
+
+resource "aws_subnet" "app-subnet2" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.app-subnet2-cidr
+  availability_zone       = var.az-2
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name = var.app-subnet2-name
+  }
+}
+
+
+### FILE: asg-app-sg.tf ###############################################
+resource "aws_security_group" "asg-security-group-app" {
+  name        = var.asg-sg-app-name
+  description = "ASG Security Group"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    description     = "HTTP from ALB"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb-security-group-app.id]
+  }
+
+  ingress {
+    description     = "SSH From Anywhere or Your-IP"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.asg-security-group-web.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = var.asg-sg-app-name
+  }
+}
+
+
+### FILE: asg-app.tf ###############################################
+resource "aws_autoscaling_group" "asg-app" {
+  name                = var.asg-app-name
+  desired_capacity    = 2
+  max_size            = 4
+  min_size            = 1
+  target_group_arns   = [aws_lb_target_group.target-group-app.arn]
+  health_check_type   = "EC2"
+  vpc_zone_identifier = [aws_subnet.app-subnet1.id, aws_subnet.app-subnet2.id]
+
+
+  launch_template {
+    id      = aws_launch_template.template-app.id
+    version = aws_launch_template.template-app.latest_version
+  }
+}
+
+
+### FILE: asg-web-sg.tf ###############################################
+resource "aws_security_group" "asg-security-group-web" {
+  name        = var.asg-sg-web-name
+  description = "ASG Security Group"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    description     = "HTTP from ALB"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb-security-group-web.id]
+  }
+
+  ingress {
+    description = "SSH From Anywhere or Your-IP"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = var.asg-sg-web-name
+  }
+}
+
+
+### FILE: asg-web.tf ###############################################
+resource "aws_autoscaling_group" "asg-web" {
+  name                = var.asg-web-name
+  desired_capacity    = 2
+  max_size            = 4
+  min_size            = 1
+  target_group_arns   = [aws_lb_target_group.target-group-web.arn]
+  health_check_type   = "EC2"
+  vpc_zone_identifier = [aws_subnet.web-subnet1.id, aws_subnet.web-subnet2.id]
+
+
+  launch_template {
+    id      = aws_launch_template.template-web.id
+    version = aws_launch_template.template-web.latest_version
+  }
+}
+
+
+### FILE: backend.tf ###############################################
+# terraform {
+#   backend "local" {
+#     path = "terraform.tfstate"
+#   }
+# }
+
+
+### FILE: db-sg.tf ###############################################
+resource "aws_security_group" "db-sg" {
+  name        = var.db-sg-name
+  description = "DB SEcurity Group"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.asg-security-group-app.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = var.db-sg-name
+  }
+}
+
+
+
+### FILE: db-subnet-group.tf ###############################################
+resource "aws_db_subnet_group" "subnet-grp" {
+  name       = var.db-subnet-grp-name
+  subnet_ids = [aws_subnet.db-subnet1.id,aws_subnet.db-subnet2.id]
+
+  tags = {
+    Name = var.db-subnet-grp-name
+  }
+}
+
+
+### FILE: db-subnets.tf ###############################################
+resource "aws_subnet" "db-subnet1" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.db-subnet1-cidr
+  availability_zone       = var.az-1
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name = var.db-subnet1-name
+  }
+}
+
+resource "aws_subnet" "db-subnet2" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.db-subnet2-cidr
+  availability_zone       = var.az-2
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = var.db-subnet2-name
+  }
+}
+
+
+### FILE: eip.tf ###############################################
+resource "aws_eip" "eip" {
+  domain = "vpc"
+}
+
+
+### FILE: internet-gateway.tf ###############################################
+resource "aws_internet_gateway" "internet-gw" {
+  vpc_id = aws_vpc.vpc.id
+  tags = {
+    Name = var.igw-name
+  }
+}
+
+
+### FILE: launch-template-app.tf ###############################################
+resource "aws_launch_template" "template-app" {
+  name          = var.launch-template-app-name
+  image_id      = var.image-id
+  instance_type = var.instance-type
+  key_name      = var.key-name
+
+  network_interfaces {
+    device_index    = 0
+    security_groups = [aws_security_group.asg-security-group-app.id]
+  }
+
+  tag_specifications {
+
+    resource_type = "instance"
+    tags = {
+      Name = var.app-instance-name
+    }
+  }
+}
+
+
+### FILE: launch-template-web.tf ###############################################
+resource "aws_launch_template" "template-web" {
+  name          = var.launch-template-web-name
+  image_id      = var.image-id
+  instance_type = var.instance-type
+  key_name      = var.key-name
+
+  network_interfaces {
+    device_index    = 0
+    security_groups = [aws_security_group.asg-security-group-web.id]
+  }
+
+  user_data = filebase64("user-data.sh")
+  tag_specifications {
+
+    resource_type = "instance"
+    tags = {
+      Name = var.web-instance-name
+    }
+  }
+}
+
+
+### FILE: nat-gw.tf ###############################################
+resource "aws_nat_gateway" "nat-gw" {
+  allocation_id     = aws_eip.eip.id
+  connectivity_type = "public"
+  subnet_id         = aws_subnet.web-subnet1.id
+
+  tags = {
+    Name = var.nat-gw-name
+  }
+
+  depends_on = [aws_internet_gateway.internet-gw]
+}
+
+
+### FILE: output.tf ###############################################
+output "web-server-dns" {
+  value = aws_lb.alb-web.dns_name
+}
+
+
+### FILE: private-route-table.tf ###############################################
+resource "aws_route_table" "private-route-table" {
+  vpc_id = aws_vpc.vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_nat_gateway.nat-gw.id
+  }
+
+  tags = {
+    Name = var.private-rt-name
+  }
+}
+
+resource "aws_route_table_association" "pri-rt-asscociation-1" {
+  subnet_id      = aws_subnet.app-subnet1.id
+  route_table_id = aws_route_table.private-route-table.id
+}
+
+resource "aws_route_table_association" "pri-rt-asscociation-2" {
+  subnet_id      = aws_subnet.app-subnet2.id
+  route_table_id = aws_route_table.private-route-table.id
+}
+
+
+### FILE: public-route-table.tf ###############################################
+resource "aws_route_table" "public-route-table" {
+  vpc_id = aws_vpc.vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.internet-gw.id
+  }
+
+  tags = {
+    Name = var.public-rt-name
+  }
+}
+
+resource "aws_route_table_association" "pub-rt-asscociation-1" {
+  subnet_id      = aws_subnet.web-subnet1.id
+  route_table_id = aws_route_table.public-route-table.id
+}
+
+resource "aws_route_table_association" "pub-rt-asscociation-2" {
+  subnet_id      = aws_subnet.web-subnet2.id
+  route_table_id = aws_route_table.public-route-table.id
+}
+
+
+### FILE: rds.tf ###############################################
+resource "aws_db_instance" "rds-db" {
+  allocated_storage      = 10
+  db_name                = var.db-name
+  engine                 = "mysql"
+  engine_version         = "5.7"
+  instance_class         = var.instance-class
+  username               = var.db-username
+  password               = var.db-password
+  parameter_group_name   = "default.mysql5.7"
+  multi_az               = true
+  db_subnet_group_name   = aws_db_subnet_group.subnet-grp.name
+  vpc_security_group_ids = [aws_security_group.db-sg.id]
+  skip_final_snapshot    = true
+}
+
+
+### FILE: secret.tfvars ###############################################
+db-username = "theree-tier-db"
+db-password = "db12345678"
+
+
+### FILE: terraform.tfvars ###############################################
+region-name              = "us-east-1"
+vpc-cidr-block           = "10.0.0.0/16"
+vpc-name                 = "three-tier-vpc"
+igw-name                 = "three-tier-igw"
+nat-gw-name              = "three-tier-nat-gw"
+web-subnet1-cidr         = "10.0.1.0/24"
+web-subnet1-name         = "three-tier-web-subnet-1"
+web-subnet2-cidr         = "10.0.2.0/24"
+web-subnet2-name         = "three-tier-web-subnet-2"
+app-subnet1-cidr         = "10.0.3.0/24"
+app-subnet1-name         = "three-tier-app-subnet-1"
+app-subnet2-cidr         = "10.0.4.0/24"
+app-subnet2-name         = "three-tier-app-subnet-2"
+db-subnet1-cidr          = "10.0.5.0/24"
+db-subnet1-name          = "three-tier-db-subnet-1"
+db-subnet2-cidr          = "10.0.6.0/24"
+db-subnet2-name          = "three-tier-db-subnet-2"
+az-1                     = "us-east-1a"
+az-2                     = "us-east-1b"
+public-rt-name           = "three-tier-public-route-table"
+private-rt-name          = "three-tier-private-rote-table"
+launch-template-web-name = "three-tier-launch-template-web"
+image-id                 = "ami-052064a798f08f0d3"
+instance-type            = "t2.micro"
+key-name                 = "3-tier-key-pair"
+web-instance-name        = "three-tier-web-instances"
+alb-web-name             = "three-tier-alb-web"
+alb-sg-web-name          = "three-tier-alb-sg-web"
+asg-web-name             = "three-tier-asg-web"
+asg-sg-web-name          = "three-tier-asg-sg-web"
+tg-web-name              = "three-tier-tg-web"
+launch-template-app-name = "three-tier-launch-template-app"
+app-instance-name        = "three-tier-app-instances"
+alb-app-name             = "three-tier-alb-app"
+alb-sg-app-name          = "three-tier-alb-sg-app"
+asg-app-name             = "three-tier-asg-app"
+asg-sg-app-name          = "three-tier-asg-sg-app"
+tg-app-name              = "three-tier-tg-app"
+db-name                  = "mydb"
+instance-class           = "db.t3.micro"
+db-sg-name               = "three-tier-db-sg"
+db-subnet-grp-name       = "three-tier-db-subnet-grp"
+app-db-sg-name           = "three-tier-app-db"
+
+
+### FILE: tg-app.tf ###############################################
+resource "aws_lb_target_group" "target-group-app" {
+  name     = var.tg-app-name
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.vpc.id
+  health_check {
+    path    = "/"
+    matcher = 200
+
+  }
+}
+
+resource "aws_lb_listener" "alb_listener-app" {
+  load_balancer_arn = aws_lb.alb-app.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.target-group-app.arn
+  }
+}
+
+
+### FILE: tg-web.tf ###############################################
+resource "aws_lb_target_group" "target-group-web" {
+  name     = var.tg-web-name
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.vpc.id
+  health_check {
+    path    = "/"
+    matcher = 200
+
+  }
+}
+
+resource "aws_lb_listener" "alb_listener-web" {
+  load_balancer_arn = aws_lb.alb-web.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.target-group-web.arn
+  }
+}
+
+
+### FILE: variables.tf ###############################################
+variable "region-name" {
+  description = "Region name"
+}
+variable "vpc-cidr-block" {
+  description = "CIDR Block for VPC"
+}
+
+variable "vpc-name" {
+  description = "Name for Virtual Private Cloud"
+}
+
+variable "igw-name" {
+  description = "Name for Internet Gateway"
+}
+
+variable "nat-gw-name" {
+  description = "Name for NAT Gateway"
+}
+
+variable "web-subnet1-cidr" {
+  description = "CIDR Block for Web-tier Subnet-1"
+}
+
+variable "web-subnet1-name" {
+  description = "Name for Web-tier Subnet-1"
+}
+
+variable "web-subnet2-cidr" {
+  description = "CIDR Block for Web-tier Subnet-2"
+}
+
+variable "web-subnet2-name" {
+  description = "Name for Web-tier Subnet-2"
+}
+
+variable "app-subnet1-cidr" {
+  description = "CIDR Block for Application-tier Subnet-1"
+}
+
+variable "app-subnet1-name" {
+  description = "Name for app-tier Subnet-1"
+}
+
+variable "app-subnet2-cidr" {
+  description = "CIDR Block for Application-tier Subnet-2"
+}
+
+variable "app-subnet2-name" {
+  description = "Name for Application-tier Subnet-2"
+}
+
+
+variable "db-subnet1-cidr" {
+  description = "CIDR Block for Database-tier Subnet-1"
+}
+
+variable "db-subnet1-name" {
+  description = "Name for Database-tier Subnet-1"
+}
+
+variable "db-subnet2-cidr" {
+  description = "CIDR Block for Database-tier Subnet-2"
+}
+
+variable "db-subnet2-name" {
+  description = "Name for Database-tier Subnet-2"
+}
+
+variable "az-1" {
+  description = "Availabity Zone 1"
+}
+
+variable "az-2" {
+  description = "Availabity Zone 2"
+}
+
+variable "public-rt-name" {
+  description = "Name for Public Route table"
+}
+
+variable "private-rt-name" {
+  description = "Name for Private Route table"
+}
+
+variable "launch-template-web-name" {
+  description = "Name for Launch-template-1"
+}
+
+variable "image-id" {
+  description = "Value for Image-id"
+}
+
+variable "instance-type" {
+  description = "Value for Instance type"
+}
+
+variable "key-name" {
+  description = "Value for Key name"
+}
+
+variable "web-instance-name" {
+  description = "Value for Web Instances"
+}
+
+variable "alb-web-name" {
+  description = "Name the Load Balancer for the Web Tier"
+}
+
+variable "alb-sg-web-name" {
+  description = "Name for alb security group 1"
+}
+
+variable "asg-web-name" {
+  description = "Name the Auto Scaling group in Web Tier"
+}
+
+variable "asg-sg-web-name" {
+  description = "Name for asg security group 1"
+}
+
+variable "tg-web-name" {
+  description = "Name for Target group web"
+}
+
+variable "launch-template-app-name" {
+  description = "Name for Launch-template-1"
+}
+
+variable "app-instance-name" {
+  description = "Value for App Instances"
+}
+
+variable "alb-app-name" {
+  description = "Name the Load Balancer for the App Tier"
+}
+
+variable "alb-sg-app-name" {
+  description = "Name for alb security group 1"
+}
+
+variable "asg-app-name" {
+  description = "Name the Auto Scaling group in app Tier"
+}
+
+variable "asg-sg-app-name" {
+  description = "Name for asg security group 1"
+}
+
+variable "tg-app-name" {
+  description = "Name for Target group app"
+}
+
+variable "db-username" {
+  description = "Username for db instance"
+}
+
+variable "db-password" {
+  description = "Password for db instance"
+}
+
+variable "db-name" {
+  description = "Name for Database"
+}
+
+variable "instance-class" {
+  description = "Value for DB instance class"
+}
+
+variable "db-sg-name" {
+  description = "Name for DB Security group"
+}
+
+variable "db-subnet-grp-name" {
+  description = "Name for DB Subnet Group"
+}
+
+variable "app-db-sg-name" {
+  description = "Name for App-DB SEcurity group"
+}
+
+
+### FILE: versions.tf ###############################################
+terraform {
+  required_version = ">= 1.0.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+  backend "local" {
+    path = "terraform.tfstate"
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+  
+} 
+
+
+### FILE: vpc.tf ###############################################
+resource "aws_vpc" "vpc" {
+  cidr_block = var.vpc-cidr-block
+  tags = {
+    Name = var.vpc-name
+  }
+}
+
+
+### FILE: web-subnets.tf ###############################################
+resource "aws_subnet" "web-subnet1" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.web-subnet1-cidr
+  availability_zone       = var.az-1
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = var.web-subnet1-name
+  }
+}
+
+resource "aws_subnet" "web-subnet2" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = var.web-subnet2-cidr
+  availability_zone       = var.az-2
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = var.web-subnet2-name
+  }
+}
+
+

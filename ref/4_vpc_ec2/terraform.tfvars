@@ -1,0 +1,9 @@
+region = "us-east-1" #Can choose any region
+vpc-cidr = "10.0.0.0/16" #Can give your own cidr for vpc
+public-subnet-cidr = "10.0.0.0/24"
+public-subnet-az = "us-east-1a" #Can choose any AZ
+private-subnet-cidr = "10.0.1.0/24"
+private-subnet-az = "us-east-1a"
+ami = "ami-052064a798f08f0d3" #The AMI id changes for different regions
+instance-type = "t2.micro"
+key-name = "vockey"
